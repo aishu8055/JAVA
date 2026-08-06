@@ -1,0 +1,192 @@
+# Face Recognition API — runtime configuration
+# =============================================
+# Override any of these at runtime via environment variables
+# (e.g. FACERECOGNITION_EXTRACTION_ALGORITHM=lbph) or via
+# --spring.config.location=file:/path/to/application.yml.
+
+spring:
+  application:
+    name: face-recognition
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 20MB
+      file-size-threshold: 2KB
+  # Jackson 3 (shipped in Spring Boot 4) defaults are sensible:
+  # ISO-8601 dates, compact output, tolerant deserialisation.
+  # Override here only if you need something different.
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: 8080
+  forward-headers-strategy: framework
+  error:
+    include-message: always
+    include-binding-errors: always
+    include-stacktrace: never
+    include-exception: false
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/plain
+    min-response-size: 1024
+
+# ---------------------------------------------------------------
+# Core face-recognition configuration (bound to FaceRecognitionProperties)
+# ---------------------------------------------------------------
+facerecognition:
+  detection:
+    type: HAAR_CASCADE          # HAAR_CASCADE | SKIN_COLOR
+    min-face-size: 30
+    min-confidence: 0.5
+    max-faces: 10
+    # Haar-cascade-only tuning (ignored by other detector types):
+    scale-factor: 1.1           # scale step between pyramid levels
+    min-neighbours: 3           # NMS support threshold
+  extraction:
+    algorithm: EIGENFACES       # EIGENFACES | FISHERFACES | LBPH | ONNX
+    num-components: 10
+    lbph:
+      grid-x: 8
+      grid-y: 8
+      radius: 1
+      neighbors: 8
+    onnx:
+      model-path: ""            # .onnx path (empty disables the backend)
+      provider: cpu             # cpu | cuda | coreml | directml
+      embedding-dimension: 128
+      input-size: 160
+  classification:
+    algorithm: KNN
+    k-neighbors: 3
+    distance-metric: EUCLIDEAN  # EUCLIDEAN | COSINE | MANHATTAN | CHI_SQUARE
+    use-average-features: false
+  recognition:
+    threshold: 0.6
+    max-alternatives: 5
+  quality:
+    min-score: 0.3
+    validate-on-enroll: true
+  image:
+    target-width: 100
+    target-height: 100
+    histogram-equalization: true
+    face-alignment: true
+  model:
+    auto-save: true
+    auto-load: true
+    save-path: data/models/default.frm
+  ratelimit:
+    enabled: true
+    requests-per-minute: 60
+  cors:
+    enabled: false
+    allowed-origins: "*"
+    allowed-methods: "GET,POST,PATCH,DELETE,OPTIONS"
+    allowed-headers: "*"
+    max-age-seconds: 3600
+  security:
+    api-key: ""                 # non-blank enables the ApiKeyAuthFilter
+    api-key-header: X-API-Key
+
+# ---------------------------------------------------------------
+# Spring Boot Actuator + Micrometer
+# ---------------------------------------------------------------
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+info:
+  app:
+    name: Face Recognition API
+    description: Classical face-recognition library for the JVM — Eigenfaces, Fisherfaces, LBPH.
+    version: 2.1.0
+
+# ---------------------------------------------------------------
+# OpenAPI / Swagger UI
+# ---------------------------------------------------------------
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+    try-it-out-enabled: true
+    filter: true
+  show-actuator: true
+
+# ---------------------------------------------------------------
+# Logging — log pattern picks up MDC(traceId) injected by RequestIdFilter
+# ---------------------------------------------------------------
+logging:
+  level:
+    root: INFO
+    com.facerecognition: INFO
+    org.springframework.web: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [%X{traceId:-}] %logger{40} - %msg%n"
+    file:    "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [%X{traceId:-}] %logger{40} - %msg%n"
+  file:
+    name: logs/face-recognition.log
+
+---
+# Development profile: verbose + nicer errors.
+spring:
+  config:
+    activate:
+      on-profile: dev
+logging:
+  level:
+    com.facerecognition: DEBUG
+    org.springframework.web: INFO
+
+---
+# Production profile: quieter logs, no stack traces in responses.
+spring:
+  config:
+    activate:
+      on-profile: prod
+logging:
+  level:
+    root: WARN
+    com.facerecognition: INFO
+server:
+  error:
+    include-message: never
+    include-stacktrace: never
+
+---
+# Test profile: disable auto-load/save, small in-memory models, loud logs.
+spring:
+  config:
+    activate:
+      on-profile: test
+facerecognition:
+  model:
+    auto-save: false
+    auto-load: false
+  ratelimit:
+    enabled: false
+logging:
+  level:
+    com.facerecognition: DEBUG
